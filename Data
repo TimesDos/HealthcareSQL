@@ -1,0 +1,314 @@
+/* Create table and import data */
+
+CREATE TABLE IF NOT EXISTS HealthCareData (
+	Name varchar(255)
+,	Age integer
+,	Gender varchar(255)
+,	Blood_Type varchar(255)
+,	Medical_Condition varchar (255)
+,	Date_of_Admission date
+,	Doctor varchar (255)
+,	Hospital varchar(255)
+,	Insurance_Provider varchar(255)
+,	Billing_Amount float
+,	Room_Number integer
+,	Admission_Type varchar(255)
+,	Discharge_Date date
+,	Medication varchar(255)
+,	Test_Results varchar(255)
+);
+
+
+Select *
+From HealthCareData hcd ;
+
+/* Correct names to Proper Name format */
+
+-- Update names with at least one space.
+-- This assumes a two-part name structure and capitalizes the first letter of the first and last parts.
+UPDATE HealthCareData  
+SET Name =
+    UPPER(SUBSTR(LOWER(Name), 1, 1)) || -- Capitalizes the first letter of the lowercase string
+    SUBSTR(LOWER(Name), 2, INSTR(LOWER(Name), ' ') - 2) || -- Lowercases the rest of the first word
+    ' ' || -- The space
+    UPPER(SUBSTR(LOWER(Name), INSTR(LOWER(Name), ' ') + 1, 1)) || -- Capitalizes the letter after the first space for Last Name
+    SUBSTR(LOWER(Name), INSTR(LOWER(Name), ' ') + 2) -- Lowercases the rest of the string after the letter after the first space for Last Name
+WHERE INSTR(Name, ' ') > 0;
+
+Select *
+From HealthCareData hcd ;
+
+/* Some of the names have Mr and Mrs labels, we need to remove these */
+ 
+UPDATE HealthCareData 
+SET Name = TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(Name, 'Mr. ', ''), 'Mrs. ', ''), 'Ms. ', ''), 'Mr ', ''), 'Mrs ', ''), 'Ms ', ''));
+
+Select *
+From HealthCareData hcd;
+
+/* Lets look into the data a bit more, and look at some count comparisons of different columns, blood types, diagnosis, etc */
+
+Select Blood_Type
+,	count(Blood_Type) as Blood_Type_Count
+from HealthCareData hcd
+Group by hcd.Blood_Type;
+
+/* Blood types are super close in counts, showing a small standard deviation / variance   */
+
+Select Medical_Condition 
+,	count(Medical_Condition) as Medical_Condition_Count
+from HealthcareData hcd
+Group by hcd.Medical_Condition;
+
+/*  Arthritis	9308
+	Asthma	9185
+	Cancer	9227
+	Diabetes	9304
+	Hypertension	9245
+	Obesity	9231
+ * 
+ * Similar counts with conditions, small standard deviation, with Arthritis being the most prevalent, and 
+ * asthma being the least prevalent, but only a 123 count difference between them */
+
+Select Gender
+,	Count(Gender) as Gender_Count
+From HealthCareData hcd 
+Group by Gender;
+
+/* Female	27726
+	Male	27774 - almost symmetrical data*/
+
+Select Blood_Type
+,	Count(Blood_Type) as Blood_Type_Count
+From HealthCareData hcd 
+Group by Blood_Type;
+
+/* A+	6956
+	A-	6969
+	AB+	6947
+	AB-	6945
+	B+	6945
+	B-	6944
+	O+	6917
+	O-	6877 */ 
+
+Select Round(AVG(Age), 1) as Average_Age
+From HealthcareData hcd;
+
+/* Average Patient Age is 51.5 Years of Age */ 
+
+/* Lets look at the doctors */
+
+Select Doctor
+,	Count(Doctor) as Doctor_Count
+From HealthCareData hcd 
+Group by Doctor;
+
+/* Over 40,000 different doctors, so lets narrow down the results a bit, lets look at doctors with 15 or more
+ * patients */
+
+Select Doctor
+,	Count(Doctor) as Doctor_Count
+from HealthCareData hcd
+Group by Doctor
+Having Count(Doctor) >= 15
+Order by Doctor_Count DESC;
+
+/* Now lets rewrite to include their diagnoses */
+
+SELECT
+    hcd.Doctor,
+    hcd.Medical_Condition, 
+    COUNT(*) as Diagnosis_Count
+FROM
+    HealthCareData hcd
+WHERE
+    hcd.Doctor IN (
+        SELECT Doctor
+        FROM HealthCareData
+        GROUP BY Doctor
+        HAVING COUNT(Doctor) > 15
+    )
+GROUP BY
+    hcd.Doctor,
+    hcd.Medical_Condition
+ORDER BY
+    hcd.Doctor,
+    Diagnosis_Count DESC;
+
+/* Diagnoses seem to vary, but given there are only 5 conditions, all 5 are met rather evenly in quantity, again, 
+ * matching the rest of the dataset and verifying its integrity 
+ * 
+ * Lets compare ages to average age */
+
+SELECT
+    Name,
+    COUNT(Name) as Name_Count,
+    Age,
+    CASE
+        WHEN Age > 51.5 THEN 'Over'
+        WHEN Age < 51.5 THEN 'Under'
+        ELSE 'equal' 
+    END as 'Over or Under Average Age'
+FROM HealthCareData hcd
+GROUP BY Name
+HAVING COUNT(Name) >= 7
+ORDER BY Name_Count DESC;
+
+/* Now lets count Over vs Under totals */ 
+
+SELECT
+    OverUnderTotal.'Over or Under Average Age',
+    COUNT(OverUnderTotal.'Over or Under Average Age') as Category_Count
+FROM (
+       SELECT
+        Name,
+        COUNT(Name) as Name_Count,
+        Age, 
+        CASE
+            WHEN Age > 51.5 THEN 'over'
+            WHEN Age < 51.5 THEN 'under'
+            ELSE 'equal' 
+        END as 'Over or Under Average Age'
+    FROM HealthCareData hcd
+    GROUP BY Name
+    HAVING COUNT(Name) >= 7
+    ) AS OverUnderTotal 
+GROUP BY OverUnderTotal.'Over or Under Average Age';
+
+/* 	over	113
+	under	115 - Almost symmetrical data, again, verifies the integrity of the dataset */
+
+
+/* Now lets look at insurance companies */
+
+Select Insurance_Provider
+,	Count(Insurance_Provider) as Insurance_Provider_Count
+From Healthcaredata hcd
+Group by Insurance_Provider;
+
+/* 	Aetna	10913
+	Blue Cross	11059
+	Cigna	11249
+	Medicare	11154
+	UnitedHealthcare	11125 - Almost even numbers across all insurance providers, with Cigna having the highest 
+	at 11249, and Aetna having the least at 10913, a 336 difference. Lets look at total billing amount per insurance 
+	provider. We'll add a concat to include a $ to denote currency*/ 
+
+Select Insurance_Provider
+,	('$' || Round(Sum(Billing_Amount), 2)) as Total_Billed
+From HealthCareData hcd 
+Group by Insurance_Provider 
+Order by Total_Billed DESC;
+
+/* 	Cigna	$287,139,345.27
+	Medicare	$285,720,758.13
+	Blue Cross	$283,254,294.21
+	UnitedHealthcare	$282,454,542.84
+	Aetna	$278,863,102.95 - Cigna had highest number of patients, so it makes sense that their total billed is the highest, 
+	lets now look at average amount billed per insurance provider */
+
+Select Insurance_Provider
+,	Round(AVG(Billing_Amount), 2) as Average_Amount_Billed
+From HealthCareData hcd 
+Group by Insurance_Provider 
+Order by Average_Amount_Billed DESC;
+
+/* 	Medicare	$25,615.99
+	Blue Cross	$25,613.01
+	Aetna	$25,553.29
+	Cigna	$25,525.77
+	UnitedHealthcare	$25,389.17 - Cigna does NOT have the highest average amount billed, Medicare does, which does not follow
+	previous trends 
+	
+	*Lets compare doctors and average billed to see if there are any trends there */
+
+Select Doctor
+,	Round(AVG(Billing_Amount), 2) as Average_Amt_Billed_Dr
+From HealthCareData hcd 
+Group by Doctor 
+Having Count(Doctor) >= 15
+Order by Average_Amt_Billed_Dr DESC;
+
+
+/* 	William Johnson	$31,279.87
+	David Johnson	$29,707.04
+	Michael Smith	$29,055.62
+	Robert Smith	$28,854.23
+	John Smith	$27,732.25
+	Robert Johnson	$27,589.11
+	John Johnson	$27,457.06
+	Elizabeth Smith	$26,606.87
+	Daniel Smith	$26,516.55
+	Christopher Brown	$26,261.59
+	David Smith	$24,912.93
+	Matthew Smith	$24790.3
+	Jennifer Johnson	$24,167.46
+	Michael Brown	$23,526.59
+	James Smith	$23,090.9
+	Michael Johnson	$23,040.95
+	Christopher Smith	$19,929.48
+	Michael Williams	$17,171.73
+	
+	William Johnson's average is almost twice as high as Michael Williams. Lets see if condition affects this. We'll denote 
+	ONLY Dr William Johnson and Dr Michael Williams, for a comparison */
+
+Select Doctor
+,	round(Billing_Amount, 2)
+,	Medical_Condition
+From HealthCareData hcd 
+Where Doctor IN ('William Johnson', 'Michael Williams')
+Order by Billing_Amount DESC;
+
+/* Results show a very wild range in Billing_Amount
+ * William Johnson	$47582.43	Arthritis
+	William Johnson	$47005.48	Obesity
+	William Johnson	$46824.6	Hypertension
+	
+	Michael Williams	$5908.2	Asthma
+	Michael Williams	$2203.53	Diabetes
+	Michael Williams	$1937.93	Obesity
+	Michael Williams	$1889.81	Arthritis
+
+	This shows Dr Johnson had 3 instances of ~$47,000 for treatment, while Dr Williams shows 4 transactions that are all under 
+	$6000. Need to look into this and determine why this is, more basic care, pricing differences, cost of living differences due to area, 
+	charging more due to more experienced doctor, more expensive treatment, etc */
+
+
+/* Lets look at age of patient vs average billed amount */
+
+SELECT
+    CASE
+        WHEN Age BETWEEN 12 AND 25 THEN '12-25'
+        WHEN Age > 25 AND Age <= 35 THEN '25-35'
+        WHEN Age > 35 AND Age <= 45 THEN '35-45'
+        WHEN Age > 45 AND Age <= 55 THEN '45-55'
+        WHEN Age > 55 AND Age <= 65 THEN '55-65'
+        WHEN Age > 65 THEN '65 and Older'
+        ELSE 'Unknown Age' 
+    END as Age_Group,
+    COUNT(*) as Patient_Count,
+    ROUND(AVG(Billing_Amount), 2) as Average_Billing_Amount
+FROM HealthCareData hcd
+GROUP BY Age_Group
+ORDER BY
+    CASE 
+        WHEN Age_Group = '12-25' THEN 1
+        WHEN Age_Group = '25-35' THEN 2
+        WHEN Age_Group = '35-45' THEN 3
+        WHEN Age_Group = '45-55' THEN 4
+        WHEN Age_Group = '55-65' THEN 5
+        WHEN Age_Group = '65 and Older' THEN 6
+        ELSE 7
+    END;
+
+/* 	12-25	6545	$25512.05
+	25-35	7987	$25668.01
+	35-45	8197	$25684.28
+	45-55	8219	$25245.2
+	55-65	8302	$25812.52
+	65 and Older	16250	$25423.1 
+	
+	This shows the majority of patients fall into the '65 and older' category, but average amount billed 
+	stays roughly constant throughout the age groups. I thought as patient gets older, more care would be needed 
+	and thus higher average amount billed, but the data refutes that point */
